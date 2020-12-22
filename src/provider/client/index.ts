@@ -10,6 +10,7 @@ import { v4 as uuid } from 'uuid';
 
 import {
   IntegrationError,
+  IntegrationLogger,
   IntegrationProviderAuthenticationError,
   IntegrationProviderAuthorizationError,
   IntegrationValidationError,
@@ -36,11 +37,13 @@ import { PortalInfo } from './types/portal';
 import { QualysV2ApiErrorResponse } from './types/vmpc/errorResponse';
 import {
   calculateConcurrency,
+  ensureXMLResponse,
   isXMLResponse,
   parseXMLResponse,
   processServiceResponseBody,
   toArray,
 } from './util';
+import { parseHostDetectionsStream } from './vmdr';
 import { buildServiceRequestBody } from './was/util';
 
 export * from './types';
@@ -53,7 +56,7 @@ const DEFAULT_HOST_IDS_PAGE_SIZE = 10000;
 /**
  * Number of hosts to fetch details for per request.
  */
-const DEFAULT_HOST_DETAILS_PAGE_SIZE = 250;
+const DEFAULT_HOST_DETAILS_PAGE_SIZE = 1000;
 
 /**
  * Number of hosts to fetch detections for per request. This is NOT the number
@@ -487,6 +490,8 @@ export class QualysAPIClient {
   /**
    * Iterate details of hosts known to the Asset Manager.
    *
+   * * [API Documentation](https://www.qualys.com/docs/qualys-asset-management-tagging-api-v2-user-guide.pdf)
+   *
    * There are currently no [rate
    * limits](https://www.qualys.com/docs/qualys-api-limits.pdf) on the Asset
    * Manager APIs.
@@ -523,14 +528,14 @@ export class QualysAPIClient {
           'Content-Type': 'text/xml',
         },
         body,
-        timeout: 1000 * 60 * 5,
+        timeout: 1000 * 60 * 10,
       });
 
       return toArray(response.ServiceResponse?.data?.HostAsset);
     };
 
     const hostDetailsQueue = new PQueue({
-      concurrency: 10,
+      concurrency: 20,
     });
 
     for (const ids of chunk(
@@ -614,15 +619,12 @@ export class QualysAPIClient {
    */
   public async iterateHostDetections(
     hostIds: QWebHostId[],
-    iteratee: ResourceIteratee<{
-      host: vmpc.DetectionHost;
-      detections: vmpc.HostDetection[];
-    }>,
-    options?: {
+    iteratee: ResourceIteratee<vmpc.HostDetections>,
+    options: {
+      onRequestError: (pageIds: number[], err: Error) => void;
       filters?: vmpc.ListHostDetectionsFilters;
       pagination?: { limit: number };
-      // TODO make this a required argument and update tests
-      onRequestError?: (pageIds: number[], err: Error) => void;
+      logger?: IntegrationLogger;
     },
   ): Promise<void> {
     const endpoint = '/api/2.0/fo/asset/host/vm/detection/';
@@ -634,10 +636,7 @@ export class QualysAPIClient {
       }
     }
 
-    // Ensure we drop from memory the XML string after parsing it
-    const fetchHostDetections = async (
-      ids: QWebHostId[],
-    ): Promise<vmpc.DetectionHost[]> => {
+    const fetchHostDetections = async (ids: QWebHostId[]): Promise<void> => {
       const params = new URLSearchParams({
         ...filters,
         action: 'list',
@@ -653,21 +652,22 @@ export class QualysAPIClient {
         { method: 'POST', body: params },
       );
 
-      const jsonFromXml = await parseXMLResponse<
-        vmpc.ListHostDetectionsResponse
-      >(response);
-      return toArray(
-        jsonFromXml.HOST_LIST_VM_DETECTION_OUTPUT?.RESPONSE?.HOST_LIST?.HOST,
-      );
-    };
+      ensureXMLResponse(response);
 
-    const performIteration = async (ids: QWebHostId[]) => {
-      for (const host of await fetchHostDetections(ids)) {
-        await iteratee({
-          host,
-          detections: toArray(host.DETECTION_LIST?.DETECTION),
-        });
-      }
+      return parseHostDetectionsStream({
+        xmlStream: response.body,
+        iteratee,
+        onIterateeError: (err, hostDetections) =>
+          options.logger?.warn(
+            { err, hostId: hostDetections.host.ID },
+            'Error occurred in host iteratee',
+          ),
+        onUnhandledError: (err) => options.onRequestError(ids, err),
+        onComplete: (event) =>
+          options?.logger?.info(
+            `Host detections parser completed by '${event}'`,
+          ),
+      });
     };
 
     // Start with the standard subscription level until we know the current
@@ -691,7 +691,7 @@ export class QualysAPIClient {
     )) {
       requestQueue
         .add(async () => {
-          await performIteration(ids);
+          await fetchHostDetections(ids);
         })
         .catch((err) => {
           options?.onRequestError?.(ids, err);

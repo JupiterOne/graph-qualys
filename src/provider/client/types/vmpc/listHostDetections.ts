@@ -108,3 +108,8 @@ export type EC2Metadata = {
 export type HostDetectionProtocol = 'tcp' | string;
 export type HostDetectionStatus = 'Active' | 'New' | string;
 export type HostDetectionType = 'Confirmed' | 'Info' | string;
+
+export type HostDetections = {
+  host: DetectionHost;
+  detections: HostDetection[];
+};

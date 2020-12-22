@@ -30,6 +30,7 @@
     "lodash": "^4.17.20",
     "node-fetch": "^2.6.1",
     "p-queue": "^6.6.2",
+    "sax": "^1.2.4",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
@@ -42,6 +43,7 @@
     "@types/express-xml-bodyparser": "^0.3.2",
     "@types/node": "^12.0.0",
     "@types/node-fetch": "^2",
+    "@types/sax": "^1.2.1",
     "@types/uuid": "^8.3.0",
     "dotenv": "^8.2.0",
     "dotenv-expand": "^5.1.0",

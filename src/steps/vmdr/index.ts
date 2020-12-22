@@ -281,6 +281,7 @@ export async function fetchScannedHostFindings({
           'Error ingesting detections processing page of hosts',
         );
       },
+      logger,
     },
   );
 

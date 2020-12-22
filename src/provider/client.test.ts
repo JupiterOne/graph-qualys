@@ -1165,12 +1165,18 @@ describe('iterateHostDetections', () => {
       name: 'iterateHostDetectionsNone',
     });
 
+    const onRequestError = jest.fn();
     const hosts: vmpc.DetectionHost[] = [];
 
-    await createClient().iterateHostDetections([], ({ host, detections }) => {
-      hosts.push(host);
-    });
+    await createClient().iterateHostDetections(
+      [],
+      ({ host, detections }) => {
+        hosts.push(host);
+      },
+      { onRequestError },
+    );
 
+    expect(onRequestError).not.toHaveBeenCalled();
     expect(hosts.length).toBe(0);
   });
 
@@ -1180,6 +1186,7 @@ describe('iterateHostDetections', () => {
       name: 'iterateHostDetectionsUnknownId',
     });
 
+    const onRequestError = jest.fn();
     const hosts: vmpc.DetectionHost[] = [];
 
     await createClient().iterateHostDetections(
@@ -1187,8 +1194,10 @@ describe('iterateHostDetections', () => {
       ({ host, detections }) => {
         hosts.push(host);
       },
+      { onRequestError },
     );
 
+    expect(onRequestError).not.toHaveBeenCalled();
     expect(hosts.length).toBe(0);
   });
 
@@ -1226,15 +1235,21 @@ describe('iterateHostDetections', () => {
       name: 'iterateHostDetections',
     });
 
+    const onRequestError = jest.fn();
     const client = createClient();
     const hostIds = await client.fetchScannedHostIds();
 
     const hosts: vmpc.DetectionHost[] = [];
 
-    await client.iterateHostDetections(hostIds, ({ host, detections }) => {
-      hosts.push(host);
-    });
+    await client.iterateHostDetections(
+      hostIds,
+      ({ host, detections }) => {
+        hosts.push(host);
+      },
+      { onRequestError },
+    );
 
+    expect(onRequestError).not.toHaveBeenCalled();
     // TODO: Get some actual vulnerability scans working
     // expect(hosts.length).toBeGreaterThan(0);
   });
@@ -1244,6 +1259,8 @@ describe('iterateHostDetections', () => {
       directory: __dirname,
       name: 'iterateHostDetectionsMocked',
     });
+
+    const onRequestError = jest.fn();
 
     const detectionsXml = fs
       .readFileSync(
@@ -1269,9 +1286,11 @@ describe('iterateHostDetections', () => {
       },
       {
         pagination: { limit: 300 },
+        onRequestError,
       },
     );
 
+    expect(onRequestError).not.toHaveBeenCalled();
     expect(hosts.length).toBe(2);
   });
 
@@ -1280,6 +1299,8 @@ describe('iterateHostDetections', () => {
       directory: __dirname,
       name: 'iterateHostDetectionsMocked',
     });
+
+    const onRequestError = jest.fn();
 
     const detectionsXml = fs
       .readFileSync(
@@ -1307,9 +1328,11 @@ describe('iterateHostDetections', () => {
       },
       {
         filters: { detection_updated_since: '2020-09-11T23:00:30Z' },
+        onRequestError,
       },
     );
 
+    expect(onRequestError).not.toHaveBeenCalled();
     expect(hosts.length).toBeGreaterThan(0);
   });
 });
